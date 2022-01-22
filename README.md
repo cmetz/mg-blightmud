@@ -8,6 +8,7 @@ Blightmud ist ein neuerer Mudclient, welcher eine alternative zu TF darstellen s
 2. In Blightmud installiere das Plugin wie folgt:
     ```
     /add_plugin https://github.com/cmetz/mg-blightmud
+    /enable_plugin mg-blightmud
     ```
 
 ## Erste Schritte
