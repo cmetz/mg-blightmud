@@ -25,3 +25,8 @@ Blightmud ist ein neuerer Mudclient, welcher eine alternative zu TF darstellen s
    Das Plugin zeigt Eingabeaufforderungen (Prompts) vom Morgengrauen, wie z.B. das Login/Passwort in der unteren Statuszeile an und nicht in dem Hauptausgabe Fenster.
 
 3. Trigger, Aliase, usw werden aktuell in Blightmud mit LUA-Scripten umgesetzt. Mehr dazu erfaehrst du in der Blightmud Hilfe (/help).
+
+## Konfiguration
+Folgende Funktionen sind derzeit implementiert, Hilfe erhaelt man ohne Parameter:
+
+- /config_statusbar
