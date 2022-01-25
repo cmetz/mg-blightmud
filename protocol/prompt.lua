@@ -1,5 +1,12 @@
-local Prompt = {}
+local Prompt = {
+    current_prompt = ""
+}
+
 local statusbar = require("ui.statusbar")
+
+function Prompt.update(self)
+    statusbar:update()
+end
 
 function Prompt.init(self)
     -- output prompt to statusbar
@@ -7,12 +14,12 @@ function Prompt.init(self)
         prompt = true,
         gag = true
     }, function(m)
-        statusbar.prompt = m[1]
-        statusbar:refresh()
+        Prompt.current_prompt = m[1]
+        Prompt:update()
     end)
 
     -- do not send empty lines to log and screen
-    -- mostly used in prompt messages like more
+    -- mostly used in mud prompt messages like more
     alias.add("^$", function(_, line)
         line:gag(true)
         mud.send(line:line(), {
@@ -20,6 +27,9 @@ function Prompt.init(self)
             skip_log = true
         })
     end)
+
 end
+
+statusbar:add_value("prompt", "MG - Aktuelles Prompt", Prompt, "current_prompt")
 
 return Prompt

@@ -1,31 +1,46 @@
 local MG_Gmcp = {}
 local statusbar = require("ui.statusbar")
+local player = require("player")
+local room = require("room")
 
 function MG_Gmcp.init()
+
     gmcp.on_ready(function()
-        -- blight.output("Registering GMCP")
-        -- blight.output("Register MG.char")
         gmcp.register("MG.char")
         gmcp.register("MG.room")
+
         gmcp.receive("MG.char.vitals", function(data)
             obj = json.decode(data)
-            statusbar.hp = obj["hp"]
-            statusbar.sp = obj["sp"]
-            statusbar:refresh()
+            player.hp = obj["hp"]
+            player.sp = obj["sp"]
+            player:update()
         end)
+
         gmcp.receive("MG.room.info", function(data)
             obj = json.decode(data)
-            statusbar.room_short = obj["short"]
-            statusbar.room_domain = obj["domain"]
-            statusbar:refresh()
+            room.id = obj["id"]
+            room.short = obj["short"]
+            room.domain = obj["domain"]
+            room:update()
         end)
+
+        gmcp.receive("MG.char.base", function(data)
+            obj = json.decode(data)
+            player.name = obj["name"]
+            player.title = obj["title"]
+            player.presay = obj["presay"]
+            player.guild = obj["guild"]
+            player.race = obj["race"]
+            player.wizlevel = obj["wizlevel"]
+            player:update()
+        end)
+
         gmcp.receive("MG.char.maxvitals", function(data)
             obj = json.decode(data)
-            statusbar.max_hp = obj["max_hp"]
-            statusbar.max_sp = obj["max_sp"]
-            statusbar:refresh()
+            player.hp_max = obj["max_hp"]
+            player.sp_max = obj["max_sp"]
+            player:update()
         end)
-        gmcp.echo(false)
     end)
 end
 

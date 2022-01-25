@@ -1,20 +1,43 @@
-local Statusbar = {
-    prompt = "",
-    hp = 0,
-    max_hp = 0,
-    sp = 0,
-    max_sp = 0,
-    room_short = "",
-    room_domain = ""
-}
+local Statusbar = {}
 
-local DEFAULT_STATUS_LINES = {"",
-                              "<red>L<reset>:{hp} <blue>K<reset>:{sp}     <cyan>{room_domain}: <yellow>{room_short}<reset>",
+-- Value
+Statusbar.Value = {}
+local Value = Statusbar.Value
+Value.__index = Value
+
+function Value.new(name, help_text, obj, key)
+    local ret = setmetatable({}, Value)
+    ret.name = name
+    ret.help_text = help_text
+    ret.obj = obj
+    ret.key = key
+    return ret
+end
+
+function Value.get_value(self)
+    local ret
+    if type(self.obj) == "function" then
+        ret = self.obj()
+    else
+        ret = self.obj
+    end
+    if self.key then
+        ret = ret[self.key]
+    end
+    return tostring(ret)
+end
+
+-- module statusbar
+
+local DEFAULT_STATUS_LINES = {"{player.name}",
+                              "<red>L<reset>:{hp} <blue>K<reset>:{sp}     <cyan>{room.domain}: <yellow>{room.short}<reset>",
                               "{prompt}"}
 
-local HP_MP_COLOR_RANGE = {C_RED, C_YELLOW, C_GREEN}
+local MAX_COLOR_RANGE = {C_RED, C_YELLOW, C_GREEN}
 
 local status_lines = {}
+
+local status_tokens = {}
 
 local status_aliases = alias.add_group()
 
@@ -47,16 +70,36 @@ Zuruecksetzen mit:
   <blue>/config_statusbar <cyan>reset<reset>
 
 Beispiel:
-  <blue>/config_statusbar <cyan>2 Lenebspunkte:{hp}<reset>
+  <blue>/config_statusbar <cyan>2 Lebenspunkte:{hp}<reset>
 
 Tab completion kann benutzt werden um aktuelle Einstellungen vorzublenden:
   <blue>/config_statusbar<red><space><tab><reset>
+
+Verfuegbare Platzhalter:
+]]))
+    local keys = {}
+    local max_name_len = 0
+    for name in pairs(status_tokens) do
+        max_name_len = math.max(max_name_len, #name)
+        table.insert(keys, name)
+    end
+    max_name_len = max_name_len + 1
+    table.sort(keys)
+    for _, name in ipairs(keys) do
+        local value = status_tokens[name]
+        local line = C_YELLOW .. string.format("  %-" .. max_name_len .. "s", name) .. C_RESET
+        if value.help_text then
+            line = line .. value.help_text
+        end
+        blight.output(line)
+    end
+    blight.output(cformat([[
 
 <green>Aktuelle Einstellung:<reset>
 ]]))
 
     for i, line in pairs(status_lines) do
-        blight.output("Zeile " .. i .. ": " .. line)
+        blight.output("  Zeile " .. i .. ": " .. line)
     end
 end
 
@@ -75,7 +118,7 @@ status_aliases:add("^/config_statusbar ?(\\d|reset)? ?(.*)?$", function(m)
             blight.output("Zeile " .. i .. " gesetzt auf: " .. m[3])
         end
     end
-    Statusbar:refresh()
+    Statusbar:update()
     save_config()
 end)
 
@@ -91,32 +134,37 @@ blight.on_complete(function(input)
     end
 end)
 
-local function get_hp_mp_colorized(current, max)
+function Statusbar.fun_max_colorized(obj, current_key, max_key)
+
+    current = obj[current_key]
+    max = obj[max_key]
     if max <= 0 then
         color_index = 1
     else
-        color_index = math.max(math.ceil(current / max * #HP_MP_COLOR_RANGE), 1)
+        color_index = math.max(math.ceil(current / max * #MAX_COLOR_RANGE), 1)
     end
-    return HP_MP_COLOR_RANGE[color_index] .. current .. C_RESET
+    return MAX_COLOR_RANGE[color_index] .. current .. C_RESET
 end
 
 function Statusbar.init(self)
     load_config()
     blight.status_height(#status_lines)
-    self:refresh()
+    self:update()
 end
 
-function Statusbar.refresh(self)
+function Statusbar.update(self)
     for i, line in pairs(status_lines) do
-        line = line:replace("{prompt}", C_RESET .. self.prompt)
-        line = line:replace("{hp}", get_hp_mp_colorized(self.hp, self.max_hp))
-        line = line:replace("{sp}", get_hp_mp_colorized(self.sp, self.max_sp))
-        line = line:replace("{max_hp}", self.max_hp)
-        line = line:replace("{max_sp}", self.max_sp)
-        line = line:replace("{room_short}", self.room_short)
-        line = line:replace("{room_domain}", self.room_domain)
-        blight.status_line(i - 1, cformat(line))
+        for name, value in pairs(status_tokens) do
+            line = line:replace("{" .. name .. "}", value:get_value())
+        end
+        blight.status_line(i - 1, line:cformat())
     end
+end
+
+function Statusbar.add_value(self, name, help_text, obj, key)
+    local ret = Value.new(name, help_text, obj, key)
+    status_tokens[name] = ret
+    return ret
 end
 
 return Statusbar
