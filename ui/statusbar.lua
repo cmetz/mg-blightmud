@@ -60,7 +60,7 @@ local function save_config()
 end
 
 local function statusbar_help()
-    blight.output(cformat([[
+    print(cformat([[
 Konfiguriert die Ausgabe der Statuszeile.
 
 Setzen mit:
@@ -91,15 +91,15 @@ Verfuegbare Platzhalter:
         if value.help_text then
             line = line .. value.help_text
         end
-        blight.output(line)
+        print(line)
     end
-    blight.output(cformat([[
+    print(cformat([[
 
 <green>Aktuelle Einstellung:<reset>
 ]]))
 
     for i, line in pairs(status_lines) do
-        blight.output("  Zeile " .. i .. ": " .. line)
+        print("  Zeile " .. i .. ": " .. line)
     end
 end
 
@@ -110,12 +110,12 @@ status_aliases:add("^/config_statusbar ?(\\d|reset)? ?(.*)?$", function(m)
     end
     if m[2] == "reset" then
         status_lines = DEFAULT_STATUS_LINES
-        blight.output("Statusbar auf die Defaulteinstellungen zurueckgesetzt!")
+        print("Statusbar auf die Defaulteinstellungen zurueckgesetzt!")
     else
         local i = tonumber(m[2])
         if i > 0 and i <= #status_lines then
             status_lines[i] = m[3]
-            blight.output("Zeile " .. i .. " gesetzt auf: " .. m[3])
+            print("Zeile " .. i .. " gesetzt auf: " .. m[3])
         end
     end
     Statusbar:update()
