@@ -1,12 +1,13 @@
 local MG_Gmcp = {}
 
 local player = require("player")
-local room = require("room")
+local map = require("map")
 local comm = require("comm")
 
 function MG_Gmcp.init()
 
     gmcp.on_ready(function()
+        gmcp.echo(false)
         gmcp.register("MG.char")
         gmcp.register("MG.room")
         gmcp.register("comm.channel")
@@ -20,10 +21,8 @@ function MG_Gmcp.init()
 
         gmcp.receive("MG.room.info", function(data)
             obj = json.decode(data)
-            room.id = obj["id"]
-            room.short = obj["short"]
-            room.domain = obj["domain"]
-            room:update()
+            map.add_room(obj["id"], obj["domain"], obj["short"], obj["exits"])
+            map.set_current_room(obj["id"])
         end)
 
         gmcp.receive("MG.char.base", function(data)

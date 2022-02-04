@@ -30,7 +30,7 @@ end
 -- module statusbar
 
 local DEFAULT_STATUS_LINES = {"{player.name}",
-                              "<red>L<reset>:{hp} <blue>K<reset>:{sp}     <cyan>{room.domain}: <yellow>{room.short}<reset>",
+                              "<red>L<reset> {player.hp} <blue>K<reset> {player.sp}     <cyan>{room.domain}: <yellow>{room.short}<reset> N {room.notes}",
                               "{prompt}"}
 
 local MAX_COLOR_RANGE = {C_RED, C_YELLOW, C_GREEN}
@@ -109,7 +109,7 @@ status_aliases:add("^/config_statusbar ?(\\d|reset)? ?(.*)?$", function(m)
         return
     end
     if m[2] == "reset" then
-        status_lines = DEFAULT_STATUS_LINES
+        status_lines = {table.unpack(DEFAULT_STATUS_LINES)}
         print("Statusbar auf die Defaulteinstellungen zurueckgesetzt!")
     else
         local i = tonumber(m[2])

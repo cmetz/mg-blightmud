@@ -1,4 +1,5 @@
 local Prompt = {
+    previous_prompt = "",
     current_prompt = ""
 }
 
@@ -15,7 +16,10 @@ function Prompt.init(self)
         gag = true
     }, function(m)
         Prompt.current_prompt = m[1]
-        Prompt:update()
+        if Prompt.previous_prompt ~= Prompt.current_prompt then
+            Prompt.previous_prompt = Prompt.current_prompt
+            Prompt:update()
+        end
     end)
 
     -- do not send empty lines to log and screen

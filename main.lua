@@ -1,7 +1,18 @@
 require("utils.string")
+require("utils.table")
+require("macros")
 local prompt = require("protocol.prompt")
 local gmcp = require("protocol.gmcp")
 local statusbar = require("ui.statusbar")
+
+local PATH_SEP = package.config:sub(1, 1)
+
+MG_DATA_PATH = blight.data_dir() .. PATH_SEP .. "mg"
+os.execute("mkdir " .. MG_DATA_PATH)
+MG_DATA_PATH = MG_DATA_PATH .. PATH_SEP
+-- local file = io.open(MG_DATA_PATH .. "test.txt", "a")
+-- file:write("loaded\n")
+-- file:close()
 
 local self = {
     host = store.session_read("current_host"),

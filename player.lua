@@ -8,15 +8,26 @@ local Player = {
     presay = "",
     guild = "",
     race = "",
-    wizlevel = 0
-
+    wizlevel = 0,
+    last_input_line = ""
 }
 
 local statusbar = require("ui.statusbar")
 
+local player_aliases = alias.add_group()
+
 function Player.update()
     statusbar:update()
 end
+
+-- input listener for fetchting the last input
+
+mud.add_input_listener(function(line)
+    Player.last_input_line = line:line()
+    return line
+end)
+
+-- statusbar
 
 statusbar:add_value("player.name", "Spieler - Name", Player, "name")
 statusbar:add_value("player.title", "Spieler - Titel", Player, "title")
