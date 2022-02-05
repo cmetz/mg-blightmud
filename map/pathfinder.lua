@@ -55,7 +55,7 @@ function PathFinder:find_path(from_id, to_id)
         end
         for _, exit in ipairs(rooms[current].exits) do
             if exit.to_room then
-                local new_dist = distance[current] + 1
+                local new_dist = distance[current] + exit:get_prio()
                 local nb = exit.to_room
                 if new_dist < distance[nb] then
                     distance[nb] = new_dist

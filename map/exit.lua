@@ -117,6 +117,16 @@ function Exit:get_name(long)
     end
 end
 
+-- proto type, we need exit flags
+-- but for now priorize exit commands
+function Exit:get_prio()
+    if self.direction:gsub(1, 1) == "/" then
+        return 1
+    else
+        return 2
+    end
+end
+
 function Exit:dump()
     local ret = {}
     ret.from_room = self.from_room

@@ -4,10 +4,77 @@ local argparser = require("utils.argparser")
 local player = require("player")
 local statusbar = require("ui.statusbar")
 local macros = require("macros")
+local class = require("utils.class")
 
 local Exit = require("map.exit")
 local Room = require("map.room")
 local PathFinder = require("map.pathfinder")
+
+-- auto walk class
+
+local AutoWalk = class()
+
+function AutoWalk:reset()
+    self.enabled = false
+    self.path = nil
+    self.step = nil
+    self.end_room_id = nil
+    self.after_walk_command = nil
+end
+
+function AutoWalk:initialize()
+    self:reset()
+end
+
+function AutoWalk:is_enabled()
+    return self.enabled
+end
+
+function AutoWalk:set_current_room_id(room_id)
+    if room_id then
+        if self.end_room_id == room_id then
+            self:reset()
+            print(cformat("<green>Du bist da!<reset>"))
+        end
+    end
+end
+
+function AutoWalk:walk_path(path)
+    if #path then
+        self:reset()
+        self.enabled = true
+        self.end_room_id = path[#path].to
+        local path_as_short = {}
+        local path_as_direction = {}
+        for _, step in ipairs(path) do
+            local from_room = Map.get_room(step.from)
+            local to_room = from_room:get_exit_to(step.to)
+            table.insert(path_as_short, to_room:get_name())
+            table.insert(path_as_direction, to_room:get_name())
+        end
+        print(cformat("<cyan>%s<reset>", table.concat(path_as_short, ", ")))
+        if #path_as_direction > 2 then
+            mud.send("ultrakurz", {
+                gag = true
+            })
+        end
+        for i, direction in ipairs(path_as_direction) do
+            if #path > 2 and i == #path then
+                mud.send("kurz", {
+                    gag = true
+                })
+            end
+
+            if direction:sub(1, 1) == "/" then
+                macros.run(direction)
+            else
+                mud.send(direction, {
+                    gag = true
+                })
+            end
+        end
+    end
+end
 
 -- map
 
@@ -22,10 +89,9 @@ end)
 local current_room_id = ""
 local last_room_id = ""
 local mapping_mode = 0 -- 0 off, 1 on, 2 on (lazy)
-local auto_walk = false
-local auto_walk_end_room
-local auto_walk_last_search = {}
+local last_search_room_result = {}
 local scan_room_after_next_prompt = false
+local auto_walk = AutoWalk()
 
 local map_aliases = alias.add_group()
 local map_triggers = trigger.add_group()
@@ -52,8 +118,12 @@ function Map.set_current_room(id)
     last_room_id = current_room_id
     current_room_id = id
 
-    if not auto_walk and mapping_mode > 0 and last_room_id ~= "" and current_room_id ~= "" and last_room_id ~=
-        current_room_id then
+    if auto_walk:is_enabled() then
+        auto_walk:set_current_room_id(current_room_id)
+        return
+    end
+
+    if mapping_mode > 0 and last_room_id ~= "" and current_room_id ~= "" and last_room_id ~= current_room_id then
         local direction = Exit.user_input_to_direction(player.last_input_line) or player.last_input_line
         if direction then
             local exit_found = false
@@ -83,16 +153,11 @@ function Map.set_current_room(id)
         scan_room_after_next_prompt = true
         map_prompt_trigger:enable()
     end
+    statusbar:update()
+end
 
-    if auto_walk and current_room_id == auto_walk_end_room then
-        print(cformat("<green>Du bist da!<reset>"))
-        auto_walk = false
-        auto_walk_end_room = nil
-    end
-
-    if not auto_walk then
-        statusbar:update()
-    end
+function Map.get_room(room_id)
+    return rooms[room_id]
 end
 
 function Map.get_current_room(quiet)
@@ -111,7 +176,7 @@ function Map.get_alias_by_room_id(room_id)
     return rooms_id_to_alias[room_id] or ""
 end
 
-function Map.list_rooms(args)
+function Map.search_room(args)
     if #args.input == 0 then
         return
     end
@@ -136,7 +201,7 @@ function Map.list_rooms(args)
         case_insensitive = true
     })
 
-    auto_walk_last_search = {}
+    last_search_room_result = {}
     for k, room in pairs(rooms) do
         -- print("here")
         if not args.flags.a or Map.get_alias_by_room_id(room.id) ~= "" then
@@ -160,7 +225,7 @@ function Map.list_rooms(args)
                     if args.flags.l then
                         print("")
                     end
-                    table.insert(auto_walk_last_search, room.id)
+                    table.insert(last_search_room_result, room.id)
                 end
             end
         end
@@ -377,7 +442,7 @@ end)
 
 map_aliases:add("^/room (?:list|search) ?(.*)?$", function(m)
     local args = argparser.parse(m[2])
-    Map.list_rooms(args)
+    Map.search_room(args)
 end)
 
 map_aliases:add("^/room scan ?(.*)?$", function(m)
@@ -486,8 +551,8 @@ map_aliases:add("^/w?go (s=)?(\\w+)", function(m)
     local to_id
     if m[2] == "s=" then
         local search_id = tonumber(m[3])
-        if search_id and search_id > 0 and search_id <= #auto_walk_last_search then
-            to_id = auto_walk_last_search[search_id]
+        if search_id and search_id > 0 and search_id <= #last_search_room_result then
+            to_id = last_search_room_result[search_id]
         else
             return
         end
@@ -502,33 +567,7 @@ map_aliases:add("^/w?go (s=)?(\\w+)", function(m)
         end
         local path = path_finder:find_path(room.id, to_id)
         if #path > 0 then
-            auto_walk = true
-            auto_walk_end_room = to_id
-            local path_as_short = {}
-            for _, step in ipairs(path) do
-                table.insert(path_as_short, rooms[step.from]:get_exit_to(step.to):get_name())
-            end
-            print(cformat("<cyan>%s<reset>", table.concat(path_as_short, ", ")))
-            if #path > 2 then
-                mud.send("ultrakurz", {
-                    gag = true
-                })
-            end
-            for i, step in ipairs(path) do
-                if #path > 2 and i == #path then
-                    mud.send("kurz", {
-                        gag = true
-                    })
-                end
-                local direction = rooms[step.from]:get_direction_to(step.to)
-                if direction:sub(1, 1) == "/" then
-                    macros.run(direction)
-                else
-                    mud.send(direction, {
-                        gag = true
-                    })
-                end
-            end
+            auto_walk:walk_path(path)
         end
     end
 end)

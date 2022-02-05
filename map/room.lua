@@ -49,11 +49,18 @@ function Room:add_exit(exit, alias, to_room)
 end
 
 function Room:get_exit_to(to_id)
+    local last_prio = math.huge
+    local found_exit = nil
     for _, exit in ipairs(self.exits) do
         if exit.to_room and exit.to_room == to_id then
-            return exit
+            local current_prio = exit:get_prio()
+            if current_prio < last_prio then
+                found_exit = exit
+                last_prio = current_prio
+            end
         end
     end
+    return found_exit
 end
 
 function Room:get_direction_to(to_id)
