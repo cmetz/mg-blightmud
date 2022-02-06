@@ -11,3 +11,7 @@ string.cformat = function(str, ...)
         return cformat(string.gsub(str, "%%", "%%%%"))
     end
 end
+
+string.starts_with = function(str, with)
+    return string.sub(str, 1, #with) == with or false
+end

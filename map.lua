@@ -17,9 +17,13 @@ local AutoWalk = class()
 function AutoWalk:reset()
     self.enabled = false
     self.path = nil
+    self.path_as_direction = nil
+    self.path_as_expected_room_id = nil
     self.step = nil
     self.end_room_id = nil
     self.after_walk_command = nil
+    self.verify_room_at_room_id = nil
+    self.step_to_verify = 0
 end
 
 function AutoWalk:initialize()
@@ -30,48 +34,103 @@ function AutoWalk:is_enabled()
     return self.enabled
 end
 
-function AutoWalk:set_current_room_id(room_id)
-    if room_id then
+function AutoWalk:handle_current_room_id(room_id)
+    if room_id and room_id ~= "" then
         if self.end_room_id == room_id then
             self:reset()
             print(cformat("<green>Du bist da!<reset>"))
+        elseif self.step_to_verify > 0 then
+            local step = self.path[self.step_to_verify]
+            if step.from == room_id then
+                -- oh we are at a step that need to be verified.
+                -- we call _begin_walking with this step
+                self:_begin_walking(self.step_to_verify)
+            end
         end
+    end
+    if self:is_enabled() then
+        return true
     end
 end
 
 function AutoWalk:walk_path(path)
     if #path then
         self:reset()
+        self.path = path
         self.enabled = true
         self.end_room_id = path[#path].to
         local path_as_short = {}
-        local path_as_direction = {}
+        self.path_as_direction = {}
         for _, step in ipairs(path) do
             local from_room = Map.get_room(step.from)
-            local to_room = from_room:get_exit_to(step.to)
-            table.insert(path_as_short, to_room:get_name())
-            table.insert(path_as_direction, to_room:get_name())
+            local exit = from_room:get_exit_to(step.to)
+            table.insert(path_as_short, exit:get_name())
+            table.insert(self.path_as_direction, exit:get_direction())
         end
         print(cformat("<cyan>%s<reset>", table.concat(path_as_short, ", ")))
-        if #path_as_direction > 2 then
-            mud.send("ultrakurz", {
+        self:_begin_walking(1)
+    end
+end
+
+function AutoWalk:_begin_walking(step)
+    local send_buffer = {}
+    self.step_to_verify = 0
+    for i = step, #self.path_as_direction, 1 do
+        local direction = self.path_as_direction[i]
+        if direction:starts_with("/") then
+            if i == step then
+                -- this is a macro which needed a verification
+                -- but we are the first step to run, so go for it
+                table.insert(send_buffer, direction)
+                if step < #self.path_as_direction then
+                    -- there are more steps todo, mark next room as verify
+                    self.step_to_verify = i + 1
+                    break
+                end
+            else
+                -- oh here is a macro, lets check if it needs data from
+                -- the mud to run
+                if macros.is_receiving(direction) then
+                    -- it needs data from the mud, so we have to wait
+                    -- until we are there, and verify then, se above
+                    self.step_to_verify = i
+                    break
+                else
+                    -- this macro can be run without verification
+                    -- it is not using data from the mud
+                    table.insert(send_buffer, direction)
+                end
+            end
+        else
+            table.insert(send_buffer, direction)
+        end
+    end
+
+    -- send to mud
+    -- we step more than one step so , heide room notifications
+    if #send_buffer > 2 then
+        mud.send("ultrakurz", {
+            gag = true
+        })
+    end
+    for i, direction in ipairs(send_buffer) do
+        if #send_buffer > 2 and i == #send_buffer then
+            -- this is the second last step, we enable
+            -- room notifications again, before we send the
+            -- last step
+            mud.send("kurz", {
                 gag = true
             })
         end
-        for i, direction in ipairs(path_as_direction) do
-            if #path > 2 and i == #path then
-                mud.send("kurz", {
-                    gag = true
-                })
-            end
-
-            if direction:sub(1, 1) == "/" then
-                macros.run(direction)
-            else
-                mud.send(direction, {
-                    gag = true
-                })
-            end
+        if direction:starts_with("/") then
+            -- hey a macro with no verification
+            -- run and let it generate its data to the
+            -- mud
+            macros.run(direction)
+        else
+            mud.send(direction, {
+                gag = true
+            })
         end
     end
 end
@@ -118,8 +177,7 @@ function Map.set_current_room(id)
     last_room_id = current_room_id
     current_room_id = id
 
-    if auto_walk:is_enabled() then
-        auto_walk:set_current_room_id(current_room_id)
+    if auto_walk:handle_current_room_id(current_room_id) then
         return
     end
 

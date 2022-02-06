@@ -120,7 +120,7 @@ end
 -- proto type, we need exit flags
 -- but for now priorize exit commands
 function Exit:get_prio()
-    if self.direction:gsub(1, 1) == "/" then
+    if self.direction:starts_with("/") then
         return 1
     else
         return 2

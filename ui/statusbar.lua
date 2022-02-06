@@ -123,7 +123,7 @@ status_aliases:add("^/config_statusbar ?(\\d|reset)? ?(.*)?$", function(m)
 end)
 
 blight.on_complete(function(input)
-    if string.sub(input, 1, 17) == "/config_statusbar" then
+    if input:starts_with("/config_statusbar") then
         local l = {}
         for i, line in pairs(status_lines) do
             l[i] = "/config_statusbar " .. i .. " " .. line
