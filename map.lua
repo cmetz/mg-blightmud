@@ -46,6 +46,11 @@ function AutoWalk:handle_current_room_id(room_id)
                 gag = true
             })
             print(cformat("<green>Du bist da!<reset>"))
+            -- little important hack to update the statusbar and still return
+            -- that we have done something, as we want to prevent the mapper for doing
+            -- something ...
+            statusbar:update()
+            return true
         elseif self.step_to_verify > 0 then
             local step = self.path[self.step_to_verify]
             if step.from == room_id then
