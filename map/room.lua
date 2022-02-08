@@ -2,27 +2,7 @@ local class = require("utils.class")
 local Exit = require("map.exit")
 
 -- Room class
-
--- not sure maybe room_alias needs to be moved back to the map 
--- as it is just an alias for a room
-
--- local room_alias = {}
-
--- local function get_room_id_by_alias(alias)
---     if room_alias[alias] then
---         return room_alias[alias]
---     end
--- end
-
--- local function get_room_aliases()
---     return room_alias
--- end
-
 local Room = class()
---  {
---     get_room_id_by_alias = get_room_id_by_alias,
---     get_room_aliases = get_room_aliases
--- }
 
 function Room:initialize(id, domain, short, long)
     self.id = id
@@ -44,8 +24,10 @@ function Room:clear_notes()
     print(cformat("<red>Notizen im Raum wurden geloescht!<reset>", note, self.short))
 end
 
-function Room:add_exit(exit, alias, to_room)
-    table.insert(self.exits, Exit(self.id, exit, alias, to_room))
+function Room:add_exit(direction, alias, to_room)
+    local exit = Exit(self.id, direction, alias, to_room)
+    table.insert(self.exits, exit)
+    return exit
 end
 
 function Room:get_exit_to(to_id)
@@ -73,25 +55,6 @@ end
 function Room:clear_exits()
     self.exits = {}
 end
-
--- function Room:set_alias(name, force)
---     if not name then
---         return
---     end
---     if room_alias[name] then
---         print(cformat("Alias \"%s\" existiert schon!", name))
---         return
---     end
---     if self.alias then
---         print(cformat("<yellow>Bestehende alias \"%s\" entfernt!<reset>", self.alias))
---         room_alias[self.alias] = nil
---     end
---     if name ~= "" then
---         room_alias[name] = self.id
---         self.alias = name
---     end
---     print(cformat("<green>Alias \"%s\" gesetzt!<reset>", name))
--- end
 
 -- commands
 

@@ -2,10 +2,12 @@ require("utils.string")
 require("utils.table")
 require("macros")
 local prompt = require("protocol.prompt")
-local gmcp = require("protocol.gmcp")
+mg_gmcp = require("protocol.gmcp")
 local statusbar = require("ui.statusbar")
 
 local PATH_SEP = package.config:sub(1, 1)
+
+math.randomseed(os.time())
 
 MG_DATA_PATH = blight.data_dir() .. PATH_SEP .. "mg"
 os.execute("mkdir " .. MG_DATA_PATH)
@@ -25,7 +27,7 @@ local function on_connect(host, port)
     if host == "localhost" or host == "mg.mud.de" then
         statusbar:init()
         prompt:init()
-        gmcp:init()
+        mg_gmcp:init()
     end
 end
 

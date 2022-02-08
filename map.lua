@@ -1,10 +1,13 @@
 local Map = {}
 
+local class = require("utils.class")
 local argparser = require("utils.argparser")
+local sha2 = require("utils.sha2")
+
+local prompt = require("protocol.prompt")
 local player = require("player")
 local statusbar = require("ui.statusbar")
 local macros = require("macros")
-local class = require("utils.class")
 
 local Exit = require("map.exit")
 local Room = require("map.room")
@@ -38,10 +41,15 @@ function AutoWalk:handle_current_room_id(room_id)
     if room_id and room_id ~= "" then
         if self.end_room_id == room_id then
             self:reset()
+            player.set_walk_mode(player.WALK_MODE_SHORT, true)
+            mud.send("schau -k", {
+                gag = true
+            })
             print(cformat("<green>Du bist da!<reset>"))
         elseif self.step_to_verify > 0 then
             local step = self.path[self.step_to_verify]
             if step.from == room_id then
+                player.set_walk_mode(player.WALK_MODE_SHORT, true)
                 -- oh we are at a step that need to be verified.
                 -- we call _begin_walking with this step
                 self:_begin_walking(self.step_to_verify)
@@ -107,21 +115,9 @@ function AutoWalk:_begin_walking(step)
     end
 
     -- send to mud
-    -- we step more than one step so , heide room notifications
-    if #send_buffer > 2 then
-        mud.send("ultrakurz", {
-            gag = true
-        })
-    end
+
+    player.set_walk_mode(player.WALK_MODE_SILENT, true)
     for i, direction in ipairs(send_buffer) do
-        if #send_buffer > 2 and i == #send_buffer then
-            -- this is the second last step, we enable
-            -- room notifications again, before we send the
-            -- last step
-            mud.send("kurz", {
-                gag = true
-            })
-        end
         if direction:starts_with("/") then
             -- hey a macro with no verification
             -- run and let it generate its data to the
@@ -147,6 +143,7 @@ end)
 
 local current_room_id = ""
 local last_room_id = ""
+local force_room_id_by_hash = false
 local mapping_mode = 0 -- 0 off, 1 on, 2 on (lazy)
 local last_search_room_result = {}
 local scan_room_after_next_prompt = false
@@ -158,23 +155,35 @@ local map_line_trigger
 local map_prompt_trigger
 
 function Map.add_room(id, domain, short, exits)
-    if not id or id == "" then
-        return
+    if not id then
+        return ""
     end
+
+    local add_room = true
+    if id == "" then
+        add_room = force_room_id_by_hash
+        id = sha2.sha256(string.format("%s%s%s", domain, short, table.concat(exits, "")))
+    end
+
     if rooms[id] then
-        return rooms[id]
-    end
-    local room = Room(id, domain, short)
-    if exits then
-        for _, exit in ipairs(exits) do
-            room:add_exit(exit)
+        return id
+    elseif add_room then
+        force_room_id_by_hash = false
+        local room = Room(id, domain, short)
+        if exits then
+            for _, exit in ipairs(exits) do
+                room:add_exit(exit)
+            end
         end
+        rooms[id] = room
+        return id
     end
-    rooms[id] = room
+
+    return ""
 end
 
 function Map.set_current_room(id)
-    last_room_id = current_room_id
+    last_room_id = current_room_id ~= "" and current_room_id or last_room_id
     current_room_id = id
 
     if auto_walk:handle_current_room_id(current_room_id) then
@@ -194,16 +203,21 @@ function Map.set_current_room(id)
                     exit_found = true
                 end
             end
-            if not exit_found and mapping_mode > 1 then -- lazy mode we add exists to the previos room
+            -- lazy mode we add exists to the previos room
+            if not exit_found and mapping_mode > 1 then
                 local last_room = rooms[last_room_id]
                 last_room:add_exit(direction, nil, current_room_id)
             end
-            local reverse_direction = Exit.reverse_direction(direction)
-            if reverse_direction then
-                for _, exit in ipairs(rooms[current_room_id].exits) do
-                    if exit.direction == reverse_direction and not exit.to_room then
-                        exit.to_room = last_room_id
-                        break
+
+            -- we also add reverse room in lazy mode
+            if mapping_mode > 1 then
+                local reverse_direction = Exit.reverse_direction(direction)
+                if reverse_direction then
+                    for _, exit in ipairs(rooms[current_room_id].exits) do
+                        if exit.direction == reverse_direction and not exit.to_room then
+                            exit.to_room = last_room_id
+                            break
+                        end
                     end
                 end
             end
@@ -445,6 +459,8 @@ function Map.load()
                 c = c + 1
             end
             rooms = new_rooms
+            rooms_alias_to_id = {}
+            rooms_id_to_alias = {}
             if data.rooms_alias_to_id then
                 for alias, room_id in pairs(data.rooms_alias_to_id) do
                     if rooms[room_id] then
@@ -493,6 +509,11 @@ map_prompt_trigger = map_triggers:add("^.*$", {
 end)
 
 -- aliases
+
+map_aliases:add("^/room add force$", function(m)
+    force_room_id_by_hash = true
+    mg_gmcp.force_room()
+end)
 
 map_aliases:add("^/(?:wo|room info)$", function(m)
     Map.print_room_info(true)
@@ -628,6 +649,31 @@ map_aliases:add("^/w?go (s=)?(\\w+)", function(m)
             auto_walk:walk_path(path)
         end
     end
+end)
+
+map_aliases:add("^/room portal (add|delete) ?(\\d+)?$", function(m)
+    local room = Map.get_current_room()
+    if room:get_exit_to("portal") then
+        return
+    end
+    -- room.has_portal = m[2] == "add" or false
+    prompt.add_output_hook(function(data, me)
+        local re = regex.new("\\[ ?(\\d+)\\. .*\\]")
+        local m = re:match(data)
+        if m and m[2] ~= "" then
+            local portal_id = tonumber(m[2])
+            if portal_id then
+                local portal_room = Map.add_room("portal", "portal", "seherportal")
+                local portal_room = rooms[portal_room]
+                portal_room:add_exit("teleportiere " .. portal_id, nil, room.id)
+                room:add_exit("", "portal", "portal")
+            end
+        end
+        prompt.remove_output_hook(me)
+    end, true)
+    mud.send("teleportiere", {
+        gag = true
+    })
 end)
 
 -- statusbar
