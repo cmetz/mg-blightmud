@@ -147,6 +147,7 @@ local path_finder = PathFinder(function()
 end)
 
 local current_room_id = ""
+local last_known_room_id = ""
 local last_room_id = ""
 local force_room_id_by_hash = false
 local mapping_mode = 0 -- 0 off, 1 on, 2 on (lazy)
@@ -188,18 +189,35 @@ function Map.add_room(id, domain, short, exits)
 end
 
 function Map.set_current_room(id)
-    last_room_id = current_room_id ~= "" and current_room_id or last_room_id
+    -- store current_room_id to last_room_id and last_known_room_id
+    last_room_id = current_room_id
+    last_known_room_id = last_room_id ~= "" and last_room_id or last_known_room_id
+    -- set new current_room_id
     current_room_id = id
 
     if auto_walk:handle_current_room_id(current_room_id) then
         return
     end
 
-    if mapping_mode > 0 and last_room_id ~= "" and current_room_id ~= "" and last_room_id ~= current_room_id then
+    if mapping_mode > 0 and last_known_room_id ~= "" and current_room_id ~= "" and last_known_room_id ~= current_room_id then
         local direction = Exit.user_input_to_direction(player.last_input_line) or player.last_input_line
+
+        local allow_add_exit = true
+        -- validate if we can use this direction
+        if last_room_id == "" then
+            if last_known_room_id == "" then
+                -- our last room had no id and we also don't know a last one
+                allow_add_exit = false
+            elseif direction:sub(1, 1) ~= "/" then
+                -- we only allow commands to enter this room, as we had
+                -- to travel through rooms without any id
+                allow_add_exit = false
+            end
+        end
+
         if direction then
             local exit_found = false
-            for _, exit in ipairs(rooms[last_room_id].exits) do
+            for _, exit in ipairs(rooms[last_known_room_id].exits) do
                 if exit.direction == direction and not exit.to_room then
                     exit.to_room = current_room_id
                     exit_found = true
@@ -208,19 +226,19 @@ function Map.set_current_room(id)
                     exit_found = true
                 end
             end
-            -- lazy mode we add exists to the previos room
-            if not exit_found and mapping_mode > 1 then
-                local last_room = rooms[last_room_id]
+            -- lazy mode we add exists to the previos known room, if allowed
+            if not exit_found and mapping_mode > 1 and allow_add_exit then
+                local last_room = rooms[last_known_room_id]
                 last_room:add_exit(direction, nil, current_room_id)
             end
 
-            -- we also add reverse room in lazy mode
-            if mapping_mode > 1 then
+            -- we also add reverse room in lazy mode if allowed
+            if mapping_mode > 1 and allow_add_exit then
                 local reverse_direction = Exit.reverse_direction(direction)
                 if reverse_direction then
                     for _, exit in ipairs(rooms[current_room_id].exits) do
                         if exit.direction == reverse_direction and not exit.to_room then
-                            exit.to_room = last_room_id
+                            exit.to_room = last_known_room_id
                             break
                         end
                     end
@@ -313,6 +331,35 @@ end
 local scanned_data = {}
 
 local RE_SCAN_EXIT_LINE = regex.new("^Es gibt (?:\\w+) sichtbaren? Ausgae?nge?[:.]")
+
+function Map.delete_room(room)
+    if not room then
+        return
+    end
+    -- delete aliases
+    local alias = rooms_id_to_alias[room.id]
+    if alias then
+        rooms_id_to_alias[room.id] = nil
+        rooms_alias_to_id[alias] = nil
+    end
+    -- also scan rooms with exit to this room
+    -- and remove the exit
+    for _, r in pairs(rooms) do
+        if r ~= room then
+            for i = #r.exits, 1, -1 do
+                if r.exits[i].to_room == room.id then
+                    table.remove(r.exits, i)
+                end
+            end
+        end
+    end
+    -- delete room
+    rooms[room.id] = nil
+    last_known_room_id = ""
+    last_room_id = ""
+    current_room_id = ""
+    print(cformat("<red>Raum geloescht!<reset>"))
+end
 
 function Map.scan_current_room(args)
     local room = Map.get_current_room()
@@ -514,6 +561,10 @@ map_prompt_trigger = map_triggers:add("^.*$", {
 end)
 
 -- aliases
+
+map_aliases:add("^/room del$", function(m)
+    Map.delete_room(Map.get_current_room())
+end)
 
 map_aliases:add("^/room add force$", function(m)
     force_room_id_by_hash = true
