@@ -1,5 +1,7 @@
 local class = require("utils.class")
 
+local CACHE_FORMAT = "%s_%s"
+
 local PathFinder = class()
 function PathFinder:initialize(get_rooms_fun)
     self.get_rooms_fun = get_rooms_fun
@@ -7,12 +9,12 @@ function PathFinder:initialize(get_rooms_fun)
 end
 
 function PathFinder:_add_to_cache(from_id, to_id, path)
-    local path_id = string.format("%s to %s", from_id, to_id)
+    local path_id = string.format(CACHE_FORMAT, from_id, to_id)
     self._cache[path_id] = path
 end
 
 function PathFinder:_get_from_cache(from_id, to_id)
-    local path_id = string.format("%s_%s", from_id, to_id)
+    local path_id = string.format(CACHE_FORMAT, from_id, to_id)
     if self._cache[path_id] then
         return self._cache[path_id]
     end

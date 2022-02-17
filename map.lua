@@ -8,6 +8,7 @@ local prompt = require("protocol.prompt")
 local player = require("player")
 local statusbar = require("ui.statusbar")
 local macros = require("macros")
+local logger = require("utils.logger")("room")
 
 local Exit = require("map.exit")
 local Room = require("map.room")
@@ -45,7 +46,7 @@ function AutoWalk:handle_current_room_id(room_id)
             mud.send("schau -k", {
                 gag = true
             })
-            print(cformat("<green>Du bist da!<reset>"))
+            logger:info("Du bist da!")
             -- little important hack to update the statusbar and still return
             -- that we have done something, as we want to prevent the mapper for doing
             -- something ...
@@ -69,7 +70,7 @@ end
 function AutoWalk:walk_path(path)
     if #path then
         self:reset()
-        self.path = path
+        self.path = {}
         self.enabled = true
         self.end_room_id = path[#path].to
         local path_as_short = {}
@@ -77,8 +78,13 @@ function AutoWalk:walk_path(path)
         for _, step in ipairs(path) do
             local from_room = Map.get_room(step.from)
             local exit = from_room:get_exit_to(step.to)
-            table.insert(path_as_short, exit:get_name())
-            table.insert(self.path_as_direction, exit:get_direction())
+            if #exit:get_direction() > 0 then
+                -- filter empty virtual directions
+                -- e.g. portal exits
+                table.insert(self.path, step)
+                table.insert(path_as_short, exit:get_name())
+                table.insert(self.path_as_direction, exit:get_direction())
+            end
         end
         print(cformat("<cyan>%s<reset>", table.concat(path_as_short, ", ")))
         self:_begin_walking(1)
@@ -157,8 +163,6 @@ local auto_walk = AutoWalk()
 
 local map_aliases = alias.add_group()
 local map_triggers = trigger.add_group()
-local map_line_trigger
-local map_prompt_trigger
 
 function Map.add_room(id, domain, short, exits)
     if not id then
@@ -215,7 +219,7 @@ function Map.set_current_room(id)
             end
         end
 
-        if direction then
+        if direction and allow_add_exit then
             local exit_found = false
             for _, exit in ipairs(rooms[last_known_room_id].exits) do
                 if exit.direction == direction and not exit.to_room then
@@ -227,13 +231,13 @@ function Map.set_current_room(id)
                 end
             end
             -- lazy mode we add exists to the previos known room, if allowed
-            if not exit_found and mapping_mode > 1 and allow_add_exit then
+            if not exit_found and mapping_mode > 1 then
                 local last_room = rooms[last_known_room_id]
                 last_room:add_exit(direction, nil, current_room_id)
             end
 
             -- we also add reverse room in lazy mode if allowed
-            if mapping_mode > 1 and allow_add_exit then
+            if mapping_mode > 1 then
                 local reverse_direction = Exit.reverse_direction(direction)
                 if reverse_direction then
                     for _, exit in ipairs(rooms[current_room_id].exits) do
@@ -245,8 +249,12 @@ function Map.set_current_room(id)
                 end
             end
         end
-        scan_room_after_next_prompt = true
-        map_prompt_trigger:enable()
+        prompt.add_output_hook(function(_, me)
+            prompt.remove_output_hook(me)
+            local args = argparser.Arguments()
+            args:add_flag("a")
+            Map.scan_current_room(args)
+        end, true)
     end
     statusbar:update()
 end
@@ -258,7 +266,7 @@ end
 function Map.get_current_room(quiet)
     local room = rooms[current_room_id]
     if not room and not quiet then
-        print(cformat("<red>Konnte keinen aktuellen Raum bestimmen!<reset>"))
+        logger:error("Konnte keinen aktuellen Raum bestimmen!")
     end
     return room
 end
@@ -298,7 +306,6 @@ function Map.search_room(args)
 
     last_search_room_result = {}
     for k, room in pairs(rooms) do
-        -- print("here")
         if not args.flags.a or Map.get_alias_by_room_id(room.id) ~= "" then
             local entry = Map.get_room_info(room, args.flags.l and true)
             local found_all = true
@@ -358,7 +365,7 @@ function Map.delete_room(room)
     last_known_room_id = ""
     last_room_id = ""
     current_room_id = ""
-    print(cformat("<red>Raum geloescht!<reset>"))
+    logger:alert("Raum geloescht!")
 end
 
 function Map.scan_current_room(args)
@@ -368,22 +375,22 @@ function Map.scan_current_room(args)
     end
     if room.scanned and not args.flags["f"] then
         if args.flags["a"] then
-            print(cformat("<yellow>Raum bereits gescanned!<reset>"))
+            logger:warning("Raum bereits gescanned!")
         else
-            print(cformat("<yellow>Raum bereits gescanned! Zum erneuten scannen bitte -f verwenden.<reset>"))
+            logger:warning("Raum bereits gescanned! Zum erneuten scannen bitte -f verwenden.")
         end
         return
     end
     scanned_data = {}
-    map_line_trigger:enable()
-    map_prompt_trigger:enable()
+    prompt.add_output_hook(Map.scan_current_room_done, true, true)
     mud.send("schau", {
         gag = true,
         skip_log = true
     })
 end
 
-function Map.scan_current_room_done()
+function Map.scan_current_room_done(scanned_data, me)
+    prompt.remove_output_hook(me)
     print(cformat("<green>Fertig mit Scannen des Raumes.<reset>"))
     local long_desc = {}
     for _, line in ipairs(scanned_data) do
@@ -397,15 +404,6 @@ function Map.scan_current_room_done()
         end
         table.insert(long_desc, line)
     end
-end
-
-function Map.receive_scan_data(line)
-    if line:prompt() then
-        map_line_trigger:disable()
-        map_prompt_trigger:disable()
-        Map.scan_current_room_done()
-    end
-    table.insert(scanned_data, line:line())
 end
 
 function Map.cmd_add_room_note(args)
@@ -486,7 +484,7 @@ function Map.save()
     local save_file = io.open(MG_DATA_PATH .. "rooms.json", "w")
     save_file:write(json.encode(data))
     save_file:close()
-    print(cformat("%d Raeume gespeichert!", c))
+    logger:info("%d Raeume gespeichert!", c)
 end
 
 function Map.toggle_mapping()
@@ -522,7 +520,7 @@ function Map.load()
                 end
             end
 
-            print(cformat("%d Raeume geladen!", c))
+            logger:info("%d Raeume geladen!", c)
         end
     end
 end
@@ -536,28 +534,6 @@ end
 -- if we received a "Finsternis." we set the current room to blank
 map_triggers:add("^Finsternis.$", {}, function()
     Map.set_current_room("")
-end)
-
-map_line_trigger = map_triggers:add("^.*$", {
-    enabled = false,
-    gag = true
-}, function(_, line)
-    Map.receive_scan_data(line)
-end)
-
-map_prompt_trigger = map_triggers:add("^.*$", {
-    enabled = false,
-    prompt = true
-}, function(_, line)
-    if scan_room_after_next_prompt then
-        map_prompt_trigger:disable()
-        scan_room_after_next_prompt = false
-        local args = argparser.Arguments()
-        args:add_flag("a")
-        Map.scan_current_room(args)
-    else
-        Map.receive_scan_data(line, line:prompt())
-    end
 end)
 
 -- aliases
@@ -622,29 +598,29 @@ map_aliases:add("^/room alias ?(.*)?", function(m)
             if alias then
                 rooms_id_to_alias[room.id] = nil
                 rooms_alias_to_id[alias] = nil
-                print(cformat("<yellow>Alias \"%s\" entfernt!<reset>", alias))
+                logger:warning("Alias \"%s\" entfernt!", alias)
                 return
             end
             return
         end
         local alias = args.input[1]
         if not alias then
-            print(cformat("<red>Kein Alias angeben!<reset>"))
+            logger:error("Kein Alias angeben!")
             return
         end
         if rooms_alias_to_id[alias] then
             if args.arguments.force == "yes" then
                 rooms_id_to_alias[rooms_alias_to_id[alias]] = nil
             else
-                print(cformat("<red>Alias \"%s\" existiert schon! --force=yes zum ueberschreiben.<reset>", alias))
+                logger:alert("Alias \"%s\" existiert schon! --force=yes zum ueberschreiben.", alias)
             end
         end
         rooms_alias_to_id[alias] = room.id
         rooms_id_to_alias[room.id] = alias
-        print(cformat("<green>Alias \"%s\" gesetzt!<reset>", alias))
+        logger:info("<green>Alias \"%s\" gesetzt!<reset>", alias)
     else
         for alias, room in pairs(rooms_alias_to_id) do
-            print(cformat("%s (%s)", rooms[room].short, alias))
+            logger:info("%s (%s)", rooms[room].short, alias)
         end
     end
 end)
@@ -653,7 +629,7 @@ map_aliases:add("^/room path (.*)", function(m)
     local args = argparser.parse(m[2])
     if args.arguments.clear then
         path_finder:clear_cache()
-        print(cformat("<yellow>Wege Cache geleert!<reset>"))
+        logger:warning("Wege Cache geleert!")
     end
     if #args.input > 1 then
         from_id = Map.get_room_id_by_alias(args.input[1])
@@ -666,11 +642,13 @@ map_aliases:add("^/room path (.*)", function(m)
         local path = path_finder:find_path(from_id, to_id)
         local path_as_short = {}
         for _, step in ipairs(path) do
-            local d = rooms[step.from]:get_exit_to(step.to):get_name()
-            table.insert(path_as_short, d)
+            local d = rooms[step.from]:get_exit_to(step.to)
+            if #d.direction > 0 then
+                table.insert(path_as_short, d:get_name())
+            end
         end
-        print(cformat("Von %s nach %s:\n%s", Map.get_alias_by_room_id(from_id), Map.get_alias_by_room_id(to_id),
-            table.concat(path_as_short, ", ")))
+        logger:info("Von %s nach %s:", Map.get_alias_by_room_id(from_id), Map.get_alias_by_room_id(to_id))
+        logger:output("%s", table.concat(path_as_short, ", "))
     end
 end)
 
@@ -714,6 +692,8 @@ map_aliases:add("^/room portal (add|delete) ?(\\d+)?$", function(m)
     end
     -- room.has_portal = m[2] == "add" or false
     prompt.add_output_hook(function(data, me)
+        prompt.remove_output_hook(me)
+        data = table.concat(data, "\n")
         local re = regex.new("\\[ ?(\\d+)\\. .*\\]")
         local m = re:match(data)
         if m and m[2] ~= "" then
@@ -723,10 +703,12 @@ map_aliases:add("^/room portal (add|delete) ?(\\d+)?$", function(m)
                 local portal_room = rooms[portal_room]
                 portal_room:add_exit("teleportiere " .. portal_id, nil, room.id)
                 room:add_exit("", "portal", "portal")
+                logger:info("Portal " .. portal_id .. " hinzugefuegt!")
+                return
             end
         end
-        prompt.remove_output_hook(me)
-    end, true)
+        logger:error("Kein Portal gefunden!")
+    end, true, true)
     mud.send("teleportiere", {
         gag = true
     })

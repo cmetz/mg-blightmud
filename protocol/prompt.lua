@@ -3,11 +3,12 @@ local Prompt = {
     current_prompt = ""
 }
 
-local output_since_last_prompt = ""
+local output_since_last_prompt = {}
 
 local statusbar = require("ui.statusbar")
 local output_hooks = {}
 local output_at_prompt_hooks = {}
+local output_gag = {}
 
 function Prompt.update(self)
     if Prompt.previous_prompt ~= Prompt.current_prompt then
@@ -19,8 +20,8 @@ function Prompt.update(self)
             hook(output_since_last_prompt, hook)
         end
     end
-    if output_since_last_prompt ~= "" then
-        output_since_last_prompt = ""
+    if #output_since_last_prompt > 0 then
+        output_since_last_prompt = {}
     end
 end
 
@@ -46,11 +47,14 @@ function Prompt.init(self)
 
 end
 
-function Prompt.add_output_hook(fun, wait_until_prompt)
+function Prompt.add_output_hook(fun, wait_until_prompt, gag)
     if wait_until_prompt then
         table.insert(output_at_prompt_hooks, fun)
     else
         table.insert(output_hooks, fun)
+    end
+    if gag then
+        table.insert(output_gag, fun)
     end
 end
 
@@ -65,19 +69,23 @@ function Prompt.remove_output_hook(fun)
             table.remove(output_at_prompt_hooks, i)
         end
     end
+    for i = #output_gag, 1, -1 do
+        if output_gag[i] == fun then
+            table.remove(output_gag, i)
+        end
+    end
 end
 
 mud.add_output_listener(function(line)
     if not line:prompt() then
         if #output_hooks > 0 or #output_at_prompt_hooks > 0 then
-            if output_since_last_prompt == "" then
-                output_since_last_prompt = line:line()
-            else
-                output_since_last_prompt = output_since_last_prompt .. "\n" .. line:line()
-            end
+            table.insert(output_since_last_prompt, line:line())
             for _, hook in ipairs(output_hooks) do
                 hook(output_since_last_prompt, hook)
             end
+        end
+        if #output_gag > 0 then
+            line:gag(true)
         end
     end
     return line

@@ -60,12 +60,14 @@ end
 
 function Room:cmd_exit_list(args)
     print("Ausgaenge:")
-    local max = 0
-    for _, exit in ipairs(self.exits) do
-        max = math.max(max, #exit:get_name())
-    end
-    for _, exit in ipairs(self.exits) do
-        print(cformat("  %-" .. max .. "s: %s", exit:get_name(), exit:get_direction()))
+    for i, exit in ipairs(self.exits) do
+        -- print(cformat("  %-" .. max .. "s: %s", exit:get_name(), exit:get_direction()))
+        local name = exit:get_name()
+        local direction = exit:get_direction()
+        if name ~= direction then
+            name = name .. ": " .. direction
+        end
+        print(cformat("  %d) %s", i, name))
     end
 end
 
@@ -86,15 +88,15 @@ function Room:cmd_exit_delete(args)
     local exit_name = table.concat(args.input, " ")
     if exit_name ~= "" then
         for i, exit in ipairs(self.exits) do
-            if exit:get_name() == exit_name then
+            if exit:get_name() == exit_name or i == tonumber(exit_name) then
+                print(cformat("<yellow>Ausgang \"%s\" entfernt!<reset>", exit:get_name()))
                 table.remove(self.exits, i)
-                print(cformat("<yellow>Ausgang \"%s\" entfernt!<reset>", exit_name))
                 return
             end
         end
     end
-    print(cformat("<red>Syntax:<reset> /room exit del alias"))
-    print(cformat("<red>Syntax:<reset> Benutze \"/room exit list\" um den alias zu bestimmen!"))
+    print(cformat("<red>Syntax:<reset> /room exit del [alias|id]"))
+    print(cformat("<red>Syntax:<reset> Benutze \"/room exit list\" um den alias, oder id zu bestimmen zu bestimmen!"))
 end
 
 -- data dump

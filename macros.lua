@@ -83,6 +83,7 @@ local function do_trigger(s)
         local flags = m[5]
         local handler_call_count = 0
         local data_handler = function(data, me)
+            data = table.concat(data, "\n")
             handler_call_count = handler_call_count + 1
             local re = regex.new("^.*" .. check_for .. ".*$", {
                 dot_matches_new_line = true,

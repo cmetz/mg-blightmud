@@ -11,6 +11,9 @@ local Class = function(attr)
         end
         return instance
     end
+    function class:is_instance_of(cls)
+        return getmetatable(self) == cls
+    end
     return setmetatable(class, {
         __call = class.__call
     })
